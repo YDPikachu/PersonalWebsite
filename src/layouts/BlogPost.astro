@@ -5,10 +5,19 @@ import BaseHead from '../components/BaseHead.astro';
 import Footer from '../components/Footer.astro';
 import FormattedDate from '../components/FormattedDate.astro';
 import Header from '../components/Header.astro';
+import TableOfContents from '../components/TableOfContents.astro';
+import { wrapDaySections } from '../utils/daySections';
+import type { MarkdownHeading } from 'astro';
 
-type Props = CollectionEntry<'blog'>['data'];
+type Props = CollectionEntry<'blog'>['data'] & { headings?: MarkdownHeading[] };
 
-const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
+const { title, description, pubDate, updatedDate, heroImage, headings = [] } = Astro.props;
+
+// Only show a table of contents when the post is long enough to need one.
+const showToc = headings.filter((h) => h.depth === 2).length >= 3;
+
+// Wrap each "Day N" section so it can be styled as a timeline.
+const content = wrapDaySections(await Astro.slots.render('default'));
 ---
 
 <html lang="en">
@@ -52,6 +61,86 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 			.last-updated-on {
 				font-style: italic;
 			}
+
+			/* ---------- Table of contents layout ---------- */
+			.toc-aside {
+				display: none;
+			}
+			@media (min-width: 1200px) {
+				.post-body.has-toc {
+					display: grid;
+					grid-template-columns: 1fr minmax(0, 720px) 1fr;
+					column-gap: 2.5em;
+				}
+				.post-body.has-toc .prose {
+					grid-column: 2;
+					width: auto;
+					max-width: none;
+					margin: 0;
+				}
+				.toc-aside {
+					display: block;
+					grid-column: 1;
+					grid-row: 1;
+					justify-self: end;
+					width: 230px;
+					padding-top: 1em;
+				}
+				.toc-inline {
+					display: none;
+				}
+			}
+
+			/* Leave a little room above headings when jumping to them */
+			.prose :global(h2),
+			.prose :global(h3) {
+				scroll-margin-top: 1.5em;
+			}
+
+			/* ---------- "Day N" timeline ---------- */
+			.prose :global(.day-section) {
+				--dot-size: 18px;
+				--dot-center: 1.05em;
+				position: relative;
+				margin-left: calc(var(--dot-size) / 2);
+				padding: 0 0 1.5em 2em;
+			}
+			/* the vertical line */
+			.prose :global(.day-section)::before {
+				content: '';
+				position: absolute;
+				left: 0;
+				top: var(--dot-center);
+				bottom: 0;
+				width: 2px;
+				background: rgb(var(--gray-light));
+			}
+			/* fade the line out after the final day */
+			.prose :global(.day-section:not(:has(+ .day-section)))::before {
+				background: linear-gradient(rgb(var(--gray-light)), transparent);
+			}
+			/* the dot */
+			.prose :global(.day-section)::after {
+				content: '';
+				position: absolute;
+				left: calc(1px - var(--dot-size) / 2);
+				top: calc(var(--dot-center) - var(--dot-size) / 2);
+				width: var(--dot-size);
+				height: var(--dot-size);
+				box-sizing: border-box;
+				border: 4px solid var(--accent);
+				border-radius: 50%;
+				background: white;
+			}
+			.prose :global(.day-section > h2) {
+				font-size: 1.75em;
+				color: var(--accent);
+			}
+			@media (max-width: 720px) {
+				.prose :global(.day-section) {
+					padding-left: 1.25em;
+				}
+			}
 		</style>
 	</head>
 
@@ -62,6 +151,12 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 				<div class="hero-image">
 					{heroImage && <Image width={1020} height={510} src={heroImage} alt="" />}
 				</div>
+				<div class:list={['post-body', { 'has-toc': showToc }]}>
+				{showToc && (
+					<aside class="toc-aside">
+						<TableOfContents headings={headings} variant="sidebar" />
+					</aside>
+				)}
 				<div class="prose">
 					<div class="title">
 						<div class="date">
@@ -75,7 +170,13 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 						<h1>{title}</h1>
 						<hr />
 					</div>
-					<slot />
+					{showToc && (
+						<div class="toc-inline">
+							<TableOfContents headings={headings} variant="inline" />
+						</div>
+					)}
+					<Fragment set:html={content} />
+				</div>
 				</div>
 			</article>
 		</main>
